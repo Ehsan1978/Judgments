@@ -121,6 +121,15 @@ function normalizeText(text) {
     .trim();
 }
 
+
+function normalizeText(text) {
+  return text
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function buildFactsSummary(text) {
   const candidate = extractSection(text, [
     /facts?/i,
@@ -133,6 +142,13 @@ function buildFactsSummary(text) {
   const fromText = candidate || text;
   const sentences = splitSentences(fromText).filter((s) => !looksLikeLawOnlySentence(s));
   const assembled = assembleSentences(sentences, 75);
+
+  if (wordCount(assembled) < 50) {
+    const fallback = assembleSentences(splitSentences(text), 75);
+    if (wordCount(fallback) < 50) return "N/A";
+    return truncateWords(fallback, 75);
+  }
+
 
   if (wordCount(assembled) < 50) {
     const fallback = assembleSentences(splitSentences(text), 75);
@@ -267,6 +283,7 @@ async function extractTextFromPdf(file) {
   if (window.pdfjsLib.GlobalWorkerOptions) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
   }
 
   setStatus("Parsing PDF text...");
@@ -279,6 +296,8 @@ async function extractTextFromPdf(file) {
   } catch {
     throw new Error("Unable to open PDF. The file may be encrypted or corrupted.");
   }
+  const loadingTask = window.pdfjsLib.getDocument({ data });
+  const pdf = await loadingTask.promise;
 
   let allText = "";
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -288,6 +307,8 @@ async function extractTextFromPdf(file) {
     if (pageText) {
       allText += `${pageText}\n`;
     }
+    const pageText = content.items.map((item) => item.str).join(" ");
+    allText += `${pageText}\n`;
   }
 
   if (wordCount(allText) >= 20) return allText;
