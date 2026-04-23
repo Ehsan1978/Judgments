@@ -13,11 +13,11 @@
 <body>
   <main class="container">
     <h1>Judgment Parser (English/Bengali)</h1>
-    <p class="subtitle">Upload a judgment in TXT, PDF, Word, or image format to auto-extract key legal details and maintain a serial Excel register.</p>
+    <p class="subtitle">Upload judgments in PDF, DOC, DOCX, or image format. The app extracts court, parties, date, a facts summary (50–75 words), and a legal-point-only summary (up to 100 words).</p>
 
     <section class="controls">
       <label for="fileInput" class="btn">Upload Judgment</label>
-      <input id="fileInput" type="file" accept=".txt,.pdf,.doc,.docx,image/*" />
+      <input id="fileInput" type="file" accept=".pdf,.doc,.docx,image/*" />
       <button id="downloadBtn" class="btn secondary">Download Excel</button>
       <button id="clearBtn" class="btn danger">Clear</button>
     </section>
@@ -41,17 +41,13 @@
         <p id="summaryBox">N/A</p>
       </article>
       <article class="box">
-        <h2>Ratio Decidendi (≤150 words)</h2>
-        <p id="ratioBox">N/A</p>
-      </article>
-      <article class="box">
-        <h2>Other Legal Points / Obiter Dicta (≤150 words)</h2>
-        <p id="obiterBox">N/A</p>
+        <h2>Summary of Legal Point (≤100 words, no facts)</h2>
+        <p id="legalBox">N/A</p>
       </article>
     </section>
 
     <section class="tableWrap">
-      <h2>Parsed Records</h2>
+      <h2>Parsed Records (Auto-serial)</h2>
       <table id="recordsTable">
         <thead>
           <tr>
@@ -60,9 +56,8 @@
             <th>Name of Court</th>
             <th>Parties</th>
             <th>Date of Judgment</th>
-            <th>Summary of Facts</th>
-            <th>Ratio Decidendi</th>
-            <th>Obiter Dicta / Other Points</th>
+            <th>Summary of Facts (50–75 words)</th>
+            <th>Summary of Legal Point (≤100 words)</th>
           </tr>
         </thead>
         <tbody></tbody>
