@@ -163,6 +163,16 @@ async function extractTextFromFile(file) {
 async function extractTextFromPdf(file) {
   if (!window.pdfjsLib) throw new Error("PDF library not loaded.");
 
+  setStatus("Parsing PDF text...");
+  const data = new Uint8Array(await file.arrayBuffer());
+
+  // Many browser/runtime environments fail loading the worker from CDN.
+  // Disable worker mode to improve compatibility.
+  const loadingTask = window.pdfjsLib.getDocument({
+    data,
+    disableWorker: true,
+    useWorkerFetch: false,
+  });
   const workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
   if (window.pdfjsLib.GlobalWorkerOptions) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
@@ -177,6 +187,17 @@ async function extractTextFromPdf(file) {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ")
+      .trim();
+    allText += pageText + "\n";
+  }
+
+  if (allText.trim()) return allText;
+
+  // Fallback for scanned/image-based PDFs (no selectable text).
+  return extractTextFromScannedPdf(pdf);
     const pageText = content.items.map((item) => item.str).join(" ");
     allText += pageText + "\n";
   }
@@ -207,6 +228,28 @@ async function extractTextFromImage(file) {
   setStatus("Running OCR on image (English + Bengali), this may take a while...");
   const result = await window.Tesseract.recognize(file, "eng+ben");
   return result?.data?.text || "N/A";
+}
+
+async function extractTextFromScannedPdf(pdf) {
+  if (!window.Tesseract) throw new Error("OCR library not loaded for scanned PDF.");
+  setStatus("No text layer in PDF. Running OCR on PDF pages...");
+
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    setStatus(`OCR on PDF page ${i}/${pdf.numPages}...`);
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+
+    await page.render({ canvasContext: context, viewport }).promise;
+    const result = await window.Tesseract.recognize(canvas, "eng+ben");
+    text += (result?.data?.text || "") + "\n";
+  }
+
+  return text || "N/A";
 }
 
 function extractSection(text, headingPatterns, maxWords, minWords = 1) {
