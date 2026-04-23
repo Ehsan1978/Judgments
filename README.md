@@ -24,5 +24,6 @@ If a field cannot be found, the UI shows `N/A`.
 - Data is persisted in browser `localStorage`.
 - The parser uses pattern-based extraction and heading heuristics. For best results, include clear headings like `Facts`, `Ratio`, `Obiter`, etc.
 - PDF text is extracted using `pdf.js` (with OCR fallback for scanned/image-only PDFs).
+- PDF text is extracted using `pdf.js`.
 - Word text is extracted using `mammoth` (with fallback text read for legacy `.doc` parsing edge cases).
 - Image files are processed with OCR (`tesseract.js`) using English + Bengali recognition.

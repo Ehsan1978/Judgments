@@ -173,6 +173,14 @@ async function extractTextFromPdf(file) {
     disableWorker: true,
     useWorkerFetch: false,
   });
+  const workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
+  if (window.pdfjsLib.GlobalWorkerOptions) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+  }
+
+  setStatus("Parsing PDF text...");
+  const data = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = window.pdfjsLib.getDocument({ data });
   const pdf = await loadingTask.promise;
   let allText = "";
 
@@ -190,6 +198,11 @@ async function extractTextFromPdf(file) {
 
   // Fallback for scanned/image-based PDFs (no selectable text).
   return extractTextFromScannedPdf(pdf);
+    const pageText = content.items.map((item) => item.str).join(" ");
+    allText += pageText + "\n";
+  }
+
+  return allText;
 }
 
 async function extractTextFromWord(file) {
