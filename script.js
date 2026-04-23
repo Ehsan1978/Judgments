@@ -4,6 +4,7 @@ const fileInput = document.getElementById("fileInput");
 const downloadBtn = document.getElementById("downloadBtn");
 const clearBtn = document.getElementById("clearBtn");
 const tableBody = document.querySelector("#recordsTable tbody");
+const statusBox = document.getElementById("statusBox");
 
 const boxes = {
   court: document.getElementById("courtBox"),
@@ -22,7 +23,8 @@ fileInput.addEventListener("change", async (event) => {
   if (!file) return;
 
   try {
-    const text = await file.text();
+    setStatus(`Reading ${file.name}...`);
+    const text = await extractTextFromFile(file);
     const parsed = parseJudgment(text);
     updateBoxes(parsed);
 
@@ -40,8 +42,10 @@ fileInput.addEventListener("change", async (event) => {
     records.push(record);
     persist();
     renderTable();
+    setStatus(`Parsed and stored: ${file.name}`);
   } catch (err) {
-    alert("Could not parse file. Please upload a plain text judgment (.txt).");
+    alert("Could not parse this file. Please upload TXT, PDF, DOC/DOCX, or image files.");
+    setStatus("Parsing failed.");
     console.error(err);
   } finally {
     fileInput.value = "";
@@ -126,6 +130,83 @@ function parseJudgment(text) {
     ratioDecidendi,
     obiterDicta,
   };
+}
+
+async function extractTextFromFile(file) {
+  const name = (file.name || "").toLowerCase();
+  const type = (file.type || "").toLowerCase();
+
+  if (name.endsWith(".txt") || type.startsWith("text/")) {
+    return file.text();
+  }
+
+  if (name.endsWith(".pdf") || type === "application/pdf") {
+    return extractTextFromPdf(file);
+  }
+
+  if (
+    name.endsWith(".docx") ||
+    type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    name.endsWith(".doc") ||
+    type === "application/msword"
+  ) {
+    return extractTextFromWord(file);
+  }
+
+  if (type.startsWith("image/")) {
+    return extractTextFromImage(file);
+  }
+
+  throw new Error("Unsupported file format.");
+}
+
+async function extractTextFromPdf(file) {
+  if (!window.pdfjsLib) throw new Error("PDF library not loaded.");
+
+  const workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
+  if (window.pdfjsLib.GlobalWorkerOptions) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+  }
+
+  setStatus("Parsing PDF text...");
+  const data = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = window.pdfjsLib.getDocument({ data });
+  const pdf = await loadingTask.promise;
+  let allText = "";
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item) => item.str).join(" ");
+    allText += pageText + "\n";
+  }
+
+  return allText;
+}
+
+async function extractTextFromWord(file) {
+  if (!window.mammoth) {
+    // Fallback for very old/plain .doc files where direct text is still readable.
+    return file.text();
+  }
+
+  setStatus("Parsing Word document...");
+  const arrayBuffer = await file.arrayBuffer();
+
+  try {
+    const result = await window.mammoth.extractRawText({ arrayBuffer });
+    return result.value || "N/A";
+  } catch {
+    // Fallback path for .doc parsing failures.
+    return file.text();
+  }
+}
+
+async function extractTextFromImage(file) {
+  if (!window.Tesseract) throw new Error("OCR library not loaded.");
+  setStatus("Running OCR on image (English + Bengali), this may take a while...");
+  const result = await window.Tesseract.recognize(file, "eng+ben");
+  return result?.data?.text || "N/A";
 }
 
 function extractSection(text, headingPatterns, maxWords, minWords = 1) {
@@ -250,4 +331,8 @@ function downloadExcel(data) {
   const worksheet = XLSX.utils.json_to_sheet(rows);
   XLSX.utils.book_append_sheet(workbook, worksheet, "Judgments");
   XLSX.writeFile(workbook, "judgments_register.xlsx");
+}
+
+function setStatus(message) {
+  statusBox.textContent = message;
 }

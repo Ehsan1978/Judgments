@@ -6,18 +6,22 @@
   <title>Judgment Parser (English/Bengali)</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
   <main class="container">
     <h1>Judgment Parser (English/Bengali)</h1>
-    <p class="subtitle">Upload a judgment text file to auto-extract key legal details and maintain a serial Excel register.</p>
+    <p class="subtitle">Upload a judgment in TXT, PDF, Word, or image format to auto-extract key legal details and maintain a serial Excel register.</p>
 
     <section class="controls">
-      <label for="fileInput" class="btn">Upload Judgment (.txt)</label>
-      <input id="fileInput" type="file" accept=".txt" />
+      <label for="fileInput" class="btn">Upload Judgment</label>
+      <input id="fileInput" type="file" accept=".txt,.pdf,.doc,.docx,image/*" />
       <button id="downloadBtn" class="btn secondary">Download Excel</button>
       <button id="clearBtn" class="btn danger">Clear</button>
     </section>
+    <p id="statusBox" class="status">Ready.</p>
 
     <section class="grid" aria-live="polite">
       <article class="box">
