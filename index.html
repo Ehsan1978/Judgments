@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Judgment Parser (English/Bengali)</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <main class="container">
+    <h1>Judgment Parser (English/Bengali)</h1>
+    <p class="subtitle">Upload a judgment in TXT, PDF, Word, or image format to auto-extract key legal details and maintain a serial Excel register.</p>
+
+    <section class="controls">
+      <label for="fileInput" class="btn">Upload Judgment</label>
+      <input id="fileInput" type="file" accept=".txt,.pdf,.doc,.docx,image/*" />
+      <button id="downloadBtn" class="btn secondary">Download Excel</button>
+      <button id="clearBtn" class="btn danger">Clear</button>
+    </section>
+    <p id="statusBox" class="status">Ready.</p>
+
+    <section class="grid" aria-live="polite">
+      <article class="box">
+        <h2>Name of Court</h2>
+        <p id="courtBox">N/A</p>
+      </article>
+      <article class="box">
+        <h2>Parties</h2>
+        <p id="partiesBox">N/A</p>
+      </article>
+      <article class="box">
+        <h2>Date of Judgment</h2>
+        <p id="dateBox">N/A</p>
+      </article>
+      <article class="box">
+        <h2>Summary of Facts (50–75 words)</h2>
+        <p id="summaryBox">N/A</p>
+      </article>
+      <article class="box">
+        <h2>Ratio Decidendi (≤150 words)</h2>
+        <p id="ratioBox">N/A</p>
+      </article>
+      <article class="box">
+        <h2>Other Legal Points / Obiter Dicta (≤150 words)</h2>
+        <p id="obiterBox">N/A</p>
+      </article>
+    </section>
+
+    <section class="tableWrap">
+      <h2>Parsed Records</h2>
+      <table id="recordsTable">
+        <thead>
+          <tr>
+            <th>Serial</th>
+            <th>File Name</th>
+            <th>Name of Court</th>
+            <th>Parties</th>
+            <th>Date of Judgment</th>
+            <th>Summary of Facts</th>
+            <th>Ratio Decidendi</th>
+            <th>Obiter Dicta / Other Points</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
