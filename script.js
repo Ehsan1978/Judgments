@@ -121,6 +121,15 @@ function normalizeText(text) {
     .trim();
 }
 
+
+function normalizeText(text) {
+  return text
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function buildFactsSummary(text) {
   const candidate = extractSection(text, [
     /facts?/i,
@@ -133,6 +142,13 @@ function buildFactsSummary(text) {
   const fromText = candidate || text;
   const sentences = splitSentences(fromText).filter((s) => !looksLikeLawOnlySentence(s));
   const assembled = assembleSentences(sentences, 75);
+
+  if (wordCount(assembled) < 50) {
+    const fallback = assembleSentences(splitSentences(text), 75);
+    if (wordCount(fallback) < 50) return "N/A";
+    return truncateWords(fallback, 75);
+  }
+
 
   if (wordCount(assembled) < 50) {
     const fallback = assembleSentences(splitSentences(text), 75);
@@ -266,11 +282,20 @@ async function extractTextFromPdf(file) {
 
   if (window.pdfjsLib.GlobalWorkerOptions) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
   }
 
   setStatus("Parsing PDF text...");
   const data = new Uint8Array(await file.arrayBuffer());
+  let pdf;
+
+  try {
+    const loadingTask = window.pdfjsLib.getDocument({ data });
+    pdf = await loadingTask.promise;
+  } catch {
+    throw new Error("Unable to open PDF. The file may be encrypted or corrupted.");
+  }
   const loadingTask = window.pdfjsLib.getDocument({ data });
   const pdf = await loadingTask.promise;
 
@@ -278,11 +303,40 @@ async function extractTextFromPdf(file) {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
+    const pageText = content.items.map((item) => item.str).join(" ").trim();
+    if (pageText) {
+      allText += `${pageText}\n`;
+    }
     const pageText = content.items.map((item) => item.str).join(" ");
     allText += `${pageText}\n`;
   }
 
-  return allText;
+  if (wordCount(allText) >= 20) return allText;
+  if (!window.Tesseract) return allText || "N/A";
+
+  setStatus("PDF appears scanned. Running OCR (English + Bengali)...");
+
+  let ocrText = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const imageDataUrl = canvas.toDataURL("image/png");
+    const result = await window.Tesseract.recognize(imageDataUrl, "eng+ben");
+    const pageOcr = result?.data?.text?.trim() || "";
+    if (pageOcr) {
+      ocrText += `${pageOcr}\n`;
+    }
+  }
+
+  return ocrText || allText || "N/A";
 }
 
 async function extractTextFromWord(file) {
