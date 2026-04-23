@@ -1,4 +1,4 @@
-const STORAGE_KEY = "judgmentRecords_v1";
+const STORAGE_KEY = "judgmentRecords_v2";
 
 const fileInput = document.getElementById("fileInput");
 const downloadBtn = document.getElementById("downloadBtn");
@@ -11,8 +11,7 @@ const boxes = {
   parties: document.getElementById("partiesBox"),
   date: document.getElementById("dateBox"),
   summary: document.getElementById("summaryBox"),
-  ratio: document.getElementById("ratioBox"),
-  obiter: document.getElementById("obiterBox"),
+  legal: document.getElementById("legalBox"),
 };
 
 let records = loadRecords();
@@ -26,6 +25,7 @@ fileInput.addEventListener("change", async (event) => {
     setStatus(`Reading ${file.name}...`);
     const text = await extractTextFromFile(file);
     const parsed = parseJudgment(text);
+
     updateBoxes(parsed);
 
     const record = {
@@ -35,16 +35,15 @@ fileInput.addEventListener("change", async (event) => {
       parties: parsed.parties,
       judgmentDate: parsed.judgmentDate,
       factsSummary: parsed.factsSummary,
-      ratioDecidendi: parsed.ratioDecidendi,
-      obiterDicta: parsed.obiterDicta,
+      legalSummary: parsed.legalSummary,
     };
 
     records.push(record);
     persist();
     renderTable();
-    setStatus(`Parsed and stored: ${file.name}`);
+    setStatus(`Parsed and stored serial #${record.serial}: ${file.name}`);
   } catch (err) {
-    alert("Could not parse this file. Please upload TXT, PDF, DOC/DOCX, or image files.");
+    alert("Could not parse this file. Please upload PDF, DOC/DOCX, or image files.");
     setStatus("Parsing failed.");
     console.error(err);
   } finally {
@@ -61,8 +60,9 @@ downloadBtn.addEventListener("click", () => {
 });
 
 clearBtn.addEventListener("click", () => {
-  const ok = confirm("This will clear all records and reset memory. Continue?");
+  const ok = confirm("This will clear all records and reset in-browser memory. Continue?");
   if (!ok) return;
+
   records = [];
   persist();
   renderTable();
@@ -71,13 +71,13 @@ clearBtn.addEventListener("click", () => {
     parties: "N/A",
     judgmentDate: "N/A",
     factsSummary: "N/A",
-    ratioDecidendi: "N/A",
-    obiterDicta: "N/A",
+    legalSummary: "N/A",
   });
+  setStatus("All records cleared from memory. New Excel downloads will start fresh.");
 });
 
 function parseJudgment(text) {
-  const cleaned = text.replace(/\r/g, "");
+  const cleaned = normalizeText(text);
 
   const court =
     matchFirst(cleaned, [
@@ -89,56 +89,157 @@ function parseJudgment(text) {
 
   const parties =
     matchFirst(cleaned, [
-      /([\p{L}0-9.,'’\-() ]{2,80}\s+v\.?\s+[\p{L}0-9.,'’\-() ]{2,80})/iu,
-      /([\p{L}0-9.,'’\-() ]{2,80}\s+vs\.?\s+[\p{L}0-9.,'’\-() ]{2,80})/iu,
-      /([\p{L}0-9.,'’\-() ]{2,80}\s+বনাম\s+[\p{L}0-9.,'’\-() ]{2,80})/iu,
+      /([\p{L}0-9.,'’\-() ]{2,90}\s+v\.?\s+[\p{L}0-9.,'’\-() ]{2,90})/iu,
+      /([\p{L}0-9.,'’\-() ]{2,90}\s+vs\.?\s+[\p{L}0-9.,'’\-() ]{2,90})/iu,
+      /([\p{L}0-9.,'’\-() ]{2,90}\s+বনাম\s+[\p{L}0-9.,'’\-() ]{2,90})/iu,
     ]) || "N/A";
 
   const judgmentDate =
     matchFirst(cleaned, [
-      /\b(Date of Judgment|Judgment Date|Dated)[:\- ]+([0-3]?\d[\/\-.][0-1]?\d[\/\-.](?:\d{2}|\d{4}))/i,
-      /\b([0-3]?\d\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b/i,
+      /\b(?:Date of Judgment|Judgment Date|Date|Dated|রায়ের তারিখ)[:\- ]+([0-3]?\d[\/\-.][0-1]?\d[\/\-.](?:\d{2}|\d{4}))/i,
+      /\b([0-3]?\d\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b/i,
       /(\d{4}-\d{2}-\d{2})/,
-    ], true) || "N/A";
+    ]) || "N/A";
 
-  const factsSummary = extractSection(cleaned, [
-    /facts?/i,
-    /background/i,
-    /ঘটনা/u,
-    /পটভূমি/u,
-  ], 75, 50);
-
-  const ratioDecidendi = extractSection(cleaned, [
-    /ratio decidendi/i,
-    /held that/i,
-    /main legal point/i,
-    /সিদ্ধান্ত/i,
-  ], 150);
-
-  const obiterDicta = extractSection(cleaned, [
-    /obiter/i,
-    /other legal point/i,
-    /additional observation/i,
-    /পর্যবেক্ষণ/u,
-  ], 150);
+  const factsSummary = buildFactsSummary(cleaned);
+  const legalSummary = buildLegalSummary(cleaned, factsSummary);
 
   return {
     court,
     parties,
     judgmentDate,
     factsSummary,
-    ratioDecidendi,
-    obiterDicta,
+    legalSummary,
   };
+}
+
+function normalizeText(text) {
+  return text
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function buildFactsSummary(text) {
+  const candidate = extractSection(text, [
+    /facts?/i,
+    /background/i,
+    /brief facts/i,
+    /ঘটনা/u,
+    /পটভূমি/u,
+  ]);
+
+  const fromText = candidate || text;
+  const sentences = splitSentences(fromText).filter((s) => !looksLikeLawOnlySentence(s));
+  const assembled = assembleSentences(sentences, 75);
+
+  if (wordCount(assembled) < 50) {
+    const fallback = assembleSentences(splitSentences(text), 75);
+    if (wordCount(fallback) < 50) return "N/A";
+    return truncateWords(fallback, 75);
+  }
+
+  return truncateWords(assembled, 75);
+}
+
+function buildLegalSummary(text, factsSummary) {
+  const legalSection = extractSection(text, [
+    /ratio decidendi/i,
+    /legal point/i,
+    /principle of law/i,
+    /held that/i,
+    /it is settled law/i,
+    /আইনের প্রশ্ন/u,
+    /আইনের নীতি/u,
+    /সিদ্ধান্ত/i,
+  ]);
+
+  const source = legalSection || text;
+  const factsTokens = toTokenSet(factsSummary);
+  const candidates = splitSentences(source)
+    .filter((s) => looksLikeLawOnlySentence(s))
+    .filter((s) => lexicalOverlapRatio(toTokenSet(s), factsTokens) < 0.35)
+    .filter((s) => !containsHardFactSignals(s));
+
+  const legal = truncateWords(assembleSentences(candidates, 100), 100);
+
+  if (!legal || wordCount(legal) < 20) return "N/A";
+  return legal;
+}
+
+function looksLikeLawOnlySentence(sentence) {
+  return /(court|held|law|legal|statute|section|article|interpret|principle|jurisdiction|precedent|maintainable|burden|standard|liable|evidence|remedy|constitutional|আইন|ধারা|আদালত|সিদ্ধান্ত|নীতি)/iu.test(sentence);
+}
+
+function containsHardFactSignals(sentence) {
+  return /(petitioner|respondent|appellant|plaintiff|defendant|on\s+\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|witness|hospital|v\.?\s|vs\.?\s|বনাম|ঘটনা|তারিখ)/iu.test(sentence);
+}
+
+function extractSection(text, headingPatterns) {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  let start = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (headingPatterns.some((pattern) => pattern.test(lines[i]))) {
+      start = i + 1;
+      break;
+    }
+  }
+
+  if (start === -1) return "";
+
+  let candidate = "";
+  for (let i = start; i < lines.length; i++) {
+    if (/^(issue|facts?|background|analysis|discussion|held|order|judgment|ratio|obiter|conclusion|decision)[: ]?$/i.test(lines[i])) {
+      break;
+    }
+    candidate += `${lines[i]} `;
+    if (wordCount(candidate) > 220) break;
+  }
+
+  return candidate.trim();
+}
+
+function splitSentences(text) {
+  return text
+    .split(/(?<=[.!?।])\s+/u)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 25);
+}
+
+function assembleSentences(sentences, maxWords) {
+  let output = "";
+  for (const sentence of sentences) {
+    const tentative = `${output} ${sentence}`.trim();
+    if (wordCount(tentative) > maxWords) break;
+    output = tentative;
+  }
+  return output;
+}
+
+function toTokenSet(text) {
+  return new Set(
+    (text || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .filter((t) => t && t.length > 2)
+  );
+}
+
+function lexicalOverlapRatio(setA, setB) {
+  if (!setA.size || !setB.size) return 0;
+  let common = 0;
+  for (const token of setA) {
+    if (setB.has(token)) common += 1;
+  }
+  return common / Math.max(setA.size, 1);
 }
 
 async function extractTextFromFile(file) {
   const name = (file.name || "").toLowerCase();
   const type = (file.type || "").toLowerCase();
-
-  if (name.endsWith(".txt") || type.startsWith("text/")) {
-    return file.text();
-  }
 
   if (name.endsWith(".pdf") || type === "application/pdf") {
     return extractTextFromPdf(file);
@@ -146,8 +247,8 @@ async function extractTextFromFile(file) {
 
   if (
     name.endsWith(".docx") ||
-    type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     name.endsWith(".doc") ||
+    type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     type === "application/msword"
   ) {
     return extractTextFromWord(file);
@@ -163,32 +264,29 @@ async function extractTextFromFile(file) {
 async function extractTextFromPdf(file) {
   if (!window.pdfjsLib) throw new Error("PDF library not loaded.");
 
-  const workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
   if (window.pdfjsLib.GlobalWorkerOptions) {
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
   }
 
   setStatus("Parsing PDF text...");
   const data = new Uint8Array(await file.arrayBuffer());
   const loadingTask = window.pdfjsLib.getDocument({ data });
   const pdf = await loadingTask.promise;
-  let allText = "";
 
+  let allText = "";
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
     const pageText = content.items.map((item) => item.str).join(" ");
-    allText += pageText + "\n";
+    allText += `${pageText}\n`;
   }
 
   return allText;
 }
 
 async function extractTextFromWord(file) {
-  if (!window.mammoth) {
-    // Fallback for very old/plain .doc files where direct text is still readable.
-    return file.text();
-  }
+  if (!window.mammoth) return file.text();
 
   setStatus("Parsing Word document...");
   const arrayBuffer = await file.arrayBuffer();
@@ -197,71 +295,36 @@ async function extractTextFromWord(file) {
     const result = await window.mammoth.extractRawText({ arrayBuffer });
     return result.value || "N/A";
   } catch {
-    // Fallback path for .doc parsing failures.
     return file.text();
   }
 }
 
 async function extractTextFromImage(file) {
   if (!window.Tesseract) throw new Error("OCR library not loaded.");
+
   setStatus("Running OCR on image (English + Bengali), this may take a while...");
   const result = await window.Tesseract.recognize(file, "eng+ben");
   return result?.data?.text || "N/A";
 }
 
-function extractSection(text, headingPatterns, maxWords, minWords = 1) {
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  let start = -1;
-
-  for (let i = 0; i < lines.length; i++) {
-    if (headingPatterns.some((p) => p.test(lines[i]))) {
-      start = i + 1;
-      break;
-    }
-  }
-
-  let candidate = "";
-
-  if (start >= 0) {
-    for (let i = start; i < lines.length; i++) {
-      if (/^[A-Z][A-Za-z ]{2,30}:?$/.test(lines[i]) || /^(Facts?|Issue|Held|Order|Judgment|Ratio|Obiter)/i.test(lines[i])) {
-        break;
-      }
-      candidate += lines[i] + " ";
-      if (wordCount(candidate) >= maxWords + 15) break;
-    }
-  }
-
-  if (!candidate) {
-    candidate = lines.slice(0, 30).join(" ");
-  }
-
-  const finalText = truncateWords(candidate, maxWords);
-  if (wordCount(finalText) < minWords || !finalText.trim()) return "N/A";
-
-  return finalText;
-}
-
-function matchFirst(text, patterns, useGroup2 = false) {
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m) {
-      if (useGroup2 && m[2]) return m[2].trim();
-      if (m[1]) return m[1].trim();
-      return m[0].trim();
-    }
+function matchFirst(text, patterns) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    if (match[1]) return match[1].trim();
+    return match[0].trim();
   }
   return null;
 }
 
 function truncateWords(str, maxWords) {
-  const words = str.split(/\s+/).filter(Boolean);
+  const words = (str || "").split(/\s+/).filter(Boolean);
   if (words.length <= maxWords) return words.join(" ");
   return words.slice(0, maxWords).join(" ");
 }
 
 function wordCount(str) {
-  return str.split(/\s+/).filter(Boolean).length;
+  return (str || "").split(/\s+/).filter(Boolean).length;
 }
 
 function updateBoxes(parsed) {
@@ -269,30 +332,29 @@ function updateBoxes(parsed) {
   boxes.parties.textContent = parsed.parties || "N/A";
   boxes.date.textContent = parsed.judgmentDate || "N/A";
   boxes.summary.textContent = parsed.factsSummary || "N/A";
-  boxes.ratio.textContent = parsed.ratioDecidendi || "N/A";
-  boxes.obiter.textContent = parsed.obiterDicta || "N/A";
+  boxes.legal.textContent = parsed.legalSummary || "N/A";
 }
 
 function renderTable() {
   tableBody.innerHTML = "";
-  for (const r of records) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(String(r.serial))}</td>
-      <td>${escapeHtml(r.fileName)}</td>
-      <td>${escapeHtml(r.court)}</td>
-      <td>${escapeHtml(r.parties)}</td>
-      <td>${escapeHtml(r.judgmentDate)}</td>
-      <td>${escapeHtml(r.factsSummary)}</td>
-      <td>${escapeHtml(r.ratioDecidendi)}</td>
-      <td>${escapeHtml(r.obiterDicta)}</td>
+
+  for (const record of records) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${escapeHtml(String(record.serial ?? "N/A"))}</td>
+      <td>${escapeHtml(record.fileName ?? "N/A")}</td>
+      <td>${escapeHtml(record.court ?? "N/A")}</td>
+      <td>${escapeHtml(record.parties ?? "N/A")}</td>
+      <td>${escapeHtml(record.judgmentDate ?? "N/A")}</td>
+      <td>${escapeHtml(record.factsSummary ?? "N/A")}</td>
+      <td>${escapeHtml(record.legalSummary ?? "N/A")}</td>
     `;
-    tableBody.appendChild(tr);
+    tableBody.appendChild(row);
   }
 }
 
 function escapeHtml(value) {
-  return value
+  return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -308,8 +370,19 @@ function loadRecords() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return [];
+
     const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.map((r, index) => ({
+      serial: index + 1,
+      fileName: r.fileName || "N/A",
+      court: r.court || "N/A",
+      parties: r.parties || "N/A",
+      judgmentDate: r.judgmentDate || "N/A",
+      factsSummary: r.factsSummary || "N/A",
+      legalSummary: r.legalSummary || r.ratioDecidendi || "N/A",
+    }));
   } catch {
     return [];
   }
@@ -322,15 +395,40 @@ function downloadExcel(data) {
     "Name of Court": r.court,
     Parties: r.parties,
     "Date of Judgment": r.judgmentDate,
-    "Summary of Facts": r.factsSummary,
-    "Ratio Decidendi": r.ratioDecidendi,
-    "Obiter Dicta / Other Legal Points": r.obiterDicta,
+    "Summary of Facts (50-75 words)": r.factsSummary,
+    "Summary of Legal Point (<=100 words)": r.legalSummary,
   }));
 
   const workbook = XLSX.utils.book_new();
   const worksheet = XLSX.utils.json_to_sheet(rows);
+
+  worksheet["!cols"] = [
+    { wch: 8 },
+    { wch: 30 },
+    { wch: 22 },
+    { wch: 30 },
+    { wch: 18 },
+    { wch: 55 },
+    { wch: 55 },
+  ];
+
+  const range = XLSX.utils.decode_range(worksheet["!ref"]);
+  for (let rowIndex = range.s.r + 1; rowIndex <= range.e.r; rowIndex++) {
+    worksheet["!rows"] = worksheet["!rows"] || [];
+    worksheet["!rows"][rowIndex] = { hpt: 42 };
+
+    for (let colIndex = range.s.c; colIndex <= range.e.c; colIndex++) {
+      const ref = XLSX.utils.encode_cell({ c: colIndex, r: rowIndex });
+      const cell = worksheet[ref];
+      if (!cell) continue;
+      cell.s = {
+        alignment: { wrapText: true, vertical: "top" },
+      };
+    }
+  }
+
   XLSX.utils.book_append_sheet(workbook, worksheet, "Judgments");
-  XLSX.writeFile(workbook, "judgments_register.xlsx");
+  XLSX.writeFile(workbook, "judgments_register.xlsx", { cellStyles: true });
 }
 
 function setStatus(message) {

@@ -91,6 +91,7 @@ h1 { margin-top: 0; }
 #recordsTable {
   border-collapse: collapse;
   width: 100%;
+  table-layout: fixed;
 }
 
 #recordsTable th,
@@ -100,6 +101,9 @@ h1 { margin-top: 0; }
   vertical-align: top;
   text-align: left;
   font-size: 13px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 
 #recordsTable th { background: #eef2ff; }
